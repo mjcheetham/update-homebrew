@@ -18,6 +18,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
-    - uses: ./
-      with: 
-        milliseconds: 1000
+    - run: echo "::set-output name=random::$(date +%s)"
+      id: random
+    - name: Update test Formula
+      uses: ./
+      with:
+        token: ${{secrets.COMMIT_TOKEN}}
+        tap: mjcheetham/tap
+        branch: test
+        name: test-formula
+        version: 2.3.4.${{ steps.random.outputs.random }}
+        sha256: blahblahblah${{ steps.random.outputs.random }}
+        message: |
+          {{name}} ({{type}}): update to {{version}}
+
+          Update the {{name}} {{type}} to version {{version}}.
+          This modifies the Ruby file {{file}}.
+
+          x = {{version.major}}
+          x.y = {{version.major_minor}}
+          x.y.z = {{version.major_minor_patch}}
+
+          That's all folks! :rocket:
+    - name: Update test Cask
+      uses: ./
+      with:
+        token: ${{secrets.COMMIT_TOKEN}}
+        tap: mjcheetham/tap
+        branch: test
+        type: cask
+        name: test-cask
+        version: 20.2015.${{ steps.random.outputs.random }}
+        url: https://example.com/v{{version.major_minor_patch}}/test-formula.{{version}}.tar.gz
+        sha256: blahblahblah${{ steps.random.outputs.random }}
+        message: |
+          {{name}} ({{type}}): update to {{version}}
+
+          Update the {{name}} {{type}} to version {{version}}.
+          This modifies the Ruby file {{file}}.
+
+          x = {{version.major}}
+          x.y = {{version.major_minor}}
+          x.y.z = {{version.major_minor_patch}}
+
+          That's all folks! :rocket:

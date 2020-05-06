@@ -1,10 +1,62 @@
-name: 'Your name here'
-description: 'Provide a description here'
-author: 'Your name or organization here'
+name: update-homebrew
+description: Update a Homebrew Formula or Cask file with new version and bottle information.
+author: mjcheetham
 inputs:
-  myInput:              # change this
-    description: 'input description here'
-    default: 'default value if applicable'
+  name:
+    description: Package name
+    required: true
+  type:
+    description: "Type of Homebrew package: 'formula' (default) or 'cask'"
+    required: false
+    default: formula
+  version:
+    description: Package version
+    required: true
+  url:
+    description: |
+      Download asset URL. The following replacements will be made:
+        {{version}} => full version string
+        {{version.major}} => major version (x)
+        {{version.major_minor}} => major and minor version (x.y)
+        {{version.major_minor_patch}} => major, minor and patch version (x.y.z)
+    required: false
+  sha256:
+    description: Download asset SHA-256 hash. If omitted the hash will be calculated.
+    required: false
+  tap:
+    description: |
+      Tap to update. Can be in the form '<org>/homebrew-<name>' or '<org>/<name>'.
+      Defaults to 'homebrew/core'.
+    required: false
+    default: homebrew/core
+  branch:
+    description: Tap branch to target. Defaults to the default branch.
+    required: false
+  token:
+    description: Access token used to access the Tap, submit pull requests or push commits.
+    required: true
+  message:
+    description: |
+      Commit message template for the update. The following replacements will be made:
+        {{name}} => name of the package
+        {{file}} => file path of the package definition
+        {{type}} => type of package: 'Formula' or 'Cask'
+        {{version}} => full version string
+        {{version.major}} => major version (x)
+        {{version.major_minor}} => major and minor version (x.y)
+        {{version.major_minor_patch}} => major, minor and patch version (x.y.z)
+    required: false
+    default: |
+      {{name}}: update to {{version}}
+  alwaysUsePullRequest:
+    description: |
+      Set to 'true' to always create a pull request rather than committing directly
+      to the Tap's branch, even if it's possible. Defaults to false.
+    required: false
+    default: 'false'
 runs:
-  using: 'node12'
-  main: 'dist/index.js'
+  using: node12
+  main: dist/index.js
+branding:
+  icon: package
+  color: orange
