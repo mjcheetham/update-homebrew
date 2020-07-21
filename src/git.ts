@@ -40,6 +40,17 @@ export class PullRequest {
   }
 }
 
+export class ReleaseAsset {
+  readonly name: string;
+  readonly url: string;
+  readonly downloadUrl: string;
+  constructor(name: string, url: string, downloadUrl: string) {
+    this.name = name;
+    this.url = url;
+    this.downloadUrl = downloadUrl;
+  }
+}
+
 export class Repository {
   readonly api: GitHub;
   readonly owner: string;
@@ -90,6 +101,17 @@ export class Repository {
       defaultBranch,
       repoData.permissions.push
     );
+  }
+
+  static splitRepoName(
+    ownerAndName: string
+  ): { owner: string; repoName: string } {
+    const nameParts = ownerAndName.split('/');
+    if (nameParts.length !== 2) {
+      throw new Error(`invalid repo name '${ownerAndName}'`);
+    }
+
+    return { owner: nameParts[0], repoName: nameParts[1] };
   }
 
   async getFileAsync(
@@ -207,7 +229,25 @@ export class Repository {
       `failed to create pull request from '${headRef}' to '${targetBranch} in '${this.owner}/${this.name}'`
     );
 
-    return new PullRequest(data.id, data.html_url);
+    return new PullRequest(data.number, data.html_url);
+  }
+
+  async getReleaseAssetsAsync(tag: string): Promise<ReleaseAsset[]> {
+    const tagName = tag.replace(/^(refs\/tags\/)/, '');
+
+    const { status, data } = await this.api.repos.getReleaseByTag({
+      ...this.req,
+      tag: tagName
+    });
+
+    assertOk(
+      status,
+      `failed to locate release with tag '${tagName}' in '${this.owner}/${this.name}'`
+    );
+
+    return data.assets.map(
+      x => new ReleaseAsset(x.name, x.url, x.browser_download_url)
+    );
   }
 }
 

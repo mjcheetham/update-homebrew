@@ -10,8 +10,26 @@ inputs:
     required: false
     default: formula
   version:
-    description: Package version
-    required: true
+    description: |
+      Package version. Required if 'releaseRepo', 'releaseTag', and 'releaseAsset' are not specified.
+    required: false
+  releaseRepo:
+    description: |
+      Repository from which to locate a release asset to compute the new package version.
+      If not provided `GITHUB_REPOSITORY` (the current repository) is used as the default.
+    required: false
+  releaseTag:
+    description: |
+      Tag for the release containing an asset from which to compute the new package verison.
+      If not provided `GITHUB_REF` (the current ref) is used as the default.
+    required: false
+  releaseAsset:
+    description: |
+      Regular expression to match release asset names for updating the package version.
+      Must contain one capture group that captures the new package version number. If a named capture
+      group 'version' exists that will be used, otherwise the first capture group (matches[1]) will
+      be used.
+    required: false
   url:
     description: |
       Download asset URL. The following replacements will be made:
