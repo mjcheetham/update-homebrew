@@ -3670,12 +3670,9 @@ class Tap {
     }
     static createAsync(api, name, branch) {
         return __awaiter(this, void 0, void 0, function* () {
-            const nameParts = name.split('/');
-            if (nameParts.length !== 2) {
-                throw new Error(`invalid tap name '${name}'`);
-            }
-            const tapOwner = nameParts[0];
-            let tapRepoName = nameParts[1];
+            const nameParts = Git.Repository.splitRepoName(name);
+            const tapOwner = nameParts.owner;
+            let tapRepoName = nameParts.repoName;
             if (!tapRepoName.startsWith('homebrew-')) {
                 tapRepoName = `homebrew-${tapRepoName}`;
             }
@@ -3893,6 +3890,7 @@ function formatMessage(format, name, filePath, packageType, version) {
         .replace(/{{type}}/g, packageType);
 }
 function run() {
+    var _a, _b, _c, _d;
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const token = core.getInput('token');
@@ -3901,11 +3899,14 @@ function run() {
             const tapBranch = core.getInput('branch');
             const tap = yield homebrew_1.Tap.createAsync(gitHub, tapStr, tapBranch);
             const name = core.getInput('name', { required: true });
-            const versionStr = core.getInput('version', { required: true });
+            const versionStr = core.getInput('version');
             let sha256 = core.getInput('sha256');
             const url = core.getInput('url');
             const message = core.getInput('message');
             const type = core.getInput('type').toLowerCase();
+            const releaseRepo = (_a = core.getInput('releaseRepo'), (_a !== null && _a !== void 0 ? _a : process.env.GITHUB_REPOSITORY));
+            const releaseTag = (_b = core.getInput('releaseTag'), (_b !== null && _b !== void 0 ? _b : process.env.GITHUB_REF));
+            const releaseAsset = core.getInput('releaseAsset');
             core.debug(`tap=${tapStr}`);
             core.debug(`name=${name}`);
             core.debug(`version=${versionStr}`);
@@ -3913,6 +3914,54 @@ function run() {
             core.debug(`url=${url}`);
             core.debug(`message=${message}`);
             core.debug(`type=${type}`);
+            core.debug(`releaseRepo=${releaseRepo}`);
+            core.debug(`releaseTag=${releaseTag}`);
+            core.debug(`releaseAsset=${releaseAsset}`);
+            if (!versionStr && !releaseAsset) {
+                throw new Error("must specify either the 'version' parameter OR 'releaseAsset' parameters.");
+            }
+            if (versionStr && releaseAsset) {
+                core.warning("'version' parameter specified as well as 'releaseAsset' parameter; using 'version' parameter only");
+            }
+            let version;
+            if (versionStr) {
+                core.debug(`using 'version' parameter for new package version: ${versionStr}`);
+                version = new version_1.Version(versionStr);
+            }
+            else {
+                core.debug(`computing new package version number from asset in repo '${releaseRepo}' @ '${releaseTag}'`);
+                const repoName = git_1.Repository.splitRepoName(releaseRepo);
+                const sourceRepo = yield git_1.Repository.createAsync(gitHub, repoName.owner, repoName.repoName);
+                const assets = yield sourceRepo.getReleaseAssetsAsync(releaseTag);
+                const nameRegex = new RegExp(releaseAsset);
+                const asset = assets.find(x => nameRegex.test(x.name));
+                if (!asset) {
+                    throw new Error(`unable to find an asset matching '${releaseAsset}' in repo '${releaseRepo}'`);
+                }
+                const matches = asset.name.match(nameRegex);
+                if (!matches || matches.length < 2) {
+                    throw new Error(`unable to match at least one capture group in asset name '${asset.name}' with regular expression '${nameRegex}'`);
+                }
+                if ((_c = matches.groups) === null || _c === void 0 ? void 0 : _c.version) {
+                    core.debug(`using 'version' named capture group for new package version: ${(_d = matches.groups) === null || _d === void 0 ? void 0 : _d.version}`);
+                    version = new version_1.Version(matches.groups.version);
+                }
+                else {
+                    core.debug(`using first capture group for new package version: ${matches[1]}`);
+                    version = new version_1.Version(matches[1]);
+                }
+                if (sha256) {
+                    core.debug('skipping SHA256 computation from asset as it has already been specified');
+                }
+                else if (url) {
+                    core.debug('skipping SHA256 computation from asset as a URL has been specified');
+                }
+                else {
+                    core.debug(`computing SHA256 hash of data from asset at '${asset.downloadUrl}'...`);
+                    sha256 = yield hash_1.computeSha256Async(asset.downloadUrl);
+                    core.debug(`sha256=${sha256}`);
+                }
+            }
             core.debug('getting package...');
             let pkg;
             switch (type) {
@@ -3927,7 +3976,6 @@ function run() {
                 default:
                     throw new Error(`unknown type '${type}'`);
             }
-            const version = new version_1.Version(versionStr);
             if (url) {
                 const fullUrl = version.format(url);
                 core.debug('updating url...');
@@ -3939,7 +3987,7 @@ function run() {
                 }
             }
             else if (!sha256) {
-                throw new Error('must specify the SHA256 checksum if URL is omitted');
+                throw new Error('must specify the SHA256 checksum or a release asset if the URL is omitted');
             }
             core.debug('updating sha256...');
             pkg.setField('sha256', sha256);
@@ -7101,6 +7149,14 @@ class PullRequest {
     }
 }
 exports.PullRequest = PullRequest;
+class ReleaseAsset {
+    constructor(name, url, downloadUrl) {
+        this.name = name;
+        this.url = url;
+        this.downloadUrl = downloadUrl;
+    }
+}
+exports.ReleaseAsset = ReleaseAsset;
 class Repository {
     constructor(api, owner, name, defaultBranch, canPush) {
         this.api = api;
@@ -7118,6 +7174,13 @@ class Repository {
             const defaultBranch = new Branch(branchData.name, branchData.commit.sha, branchData.protected);
             return new Repository(api, owner, name, defaultBranch, repoData.permissions.push);
         });
+    }
+    static splitRepoName(ownerAndName) {
+        const nameParts = ownerAndName.split('/');
+        if (nameParts.length !== 2) {
+            throw new Error(`invalid repo name '${ownerAndName}'`);
+        }
+        return { owner: nameParts[0], repoName: nameParts[1] };
     }
     getFileAsync(filePath, branch) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -7167,6 +7230,14 @@ class Repository {
                 body }));
             assertOk(status, `failed to create pull request from '${headRef}' to '${targetBranch} in '${this.owner}/${this.name}'`);
             return new PullRequest(data.id, data.html_url);
+        });
+    }
+    getReleaseAssetsAsync(tag) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const tagName = tag.replace(/^(refs\/tags\/)/, '');
+            const { status, data } = yield this.api.repos.getReleaseByTag(Object.assign(Object.assign({}, this.req), { tag: tagName }));
+            assertOk(status, `failed to locate release with tag '${tagName}' in '${this.owner}/${this.name}'`);
+            return data.assets.map(x => new ReleaseAsset(x.name, x.url, x.browser_download_url));
         });
     }
 }

@@ -61,13 +61,10 @@ export class Tap {
     name: string,
     branch?: string
   ): Promise<Tap> {
-    const nameParts = name.split('/');
-    if (nameParts.length !== 2) {
-      throw new Error(`invalid tap name '${name}'`);
-    }
+    const nameParts = Git.Repository.splitRepoName(name);
 
-    const tapOwner = nameParts[0];
-    let tapRepoName = nameParts[1];
+    const tapOwner = nameParts.owner;
+    let tapRepoName = nameParts.repoName;
     if (!tapRepoName.startsWith('homebrew-')) {
       tapRepoName = `homebrew-${tapRepoName}`;
     }
