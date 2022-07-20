@@ -1,6 +1,6 @@
 import * as core from '@actions/core';
 import { Tap, Package } from './homebrew';
-import { Repository, Commit, PullRequest } from './git';
+import { Repository, Commit, PullRequest, ReleaseAsset } from './git';
 import { Version } from './version';
 import { GitHub } from '@actions/github';
 import { computeSha256Async } from './hash';
@@ -30,14 +30,14 @@ async function run(): Promise<void> {
 
     const name = core.getInput('name', { required: true });
     const versionStr = core.getInput('version');
-    let sha256 = core.getInput('sha256');
+    const sha256 = core.getInput('sha256');
     const url = core.getInput('url');
     const message = core.getInput('message');
     const type = core.getInput('type').toLowerCase();
     const releaseRepo =
       core.getInput('releaseRepo') || process.env.GITHUB_REPOSITORY!;
     const releaseTag = core.getInput('releaseTag') || process.env.GITHUB_REF!;
-    const releaseAsset = core.getInput('releaseAsset');
+    const releaseAsset = core.getMultilineInput('releaseAsset');
     const alwaysUsePullRequest =
       core.getInput('alwaysUsePullRequest') === 'true';
 
@@ -50,7 +50,12 @@ async function run(): Promise<void> {
     core.debug(`type=${type}`);
     core.debug(`releaseRepo=${releaseRepo}`);
     core.debug(`releaseTag=${releaseTag}`);
-    core.debug(`releaseAsset=${releaseAsset}`);
+    core.debug(
+      `releaseAsset contains ${releaseAsset.length} assets with names:`
+    );
+    for (const ra of releaseAsset) {
+      core.debug(`${ra}`);
+    }
     core.debug(`alwaysUsePullRequest=${alwaysUsePullRequest}`);
 
     core.debug(
@@ -58,19 +63,40 @@ async function run(): Promise<void> {
     );
     core.debug(`process.env.GITHUB_REF=${process.env.GITHUB_REF}`);
 
-    if (!versionStr && !releaseAsset) {
+    if (!versionStr && releaseAsset.length === 0) {
       throw new Error(
-        "must specify either the 'version' parameter OR 'releaseAsset' parameters."
+        "must specify either the 'version' parameter OR 'releaseAsset' parameter."
       );
     }
 
-    if (versionStr && releaseAsset) {
+    if (versionStr && releaseAsset.length > 0) {
       core.warning(
         "'version' parameter specified as well as 'releaseAsset' parameter; using 'version' parameter only"
       );
     }
 
     let version: Version;
+    const repoName = Repository.splitRepoName(releaseRepo);
+    const sourceRepo = await Repository.createAsync(
+      gitHub,
+      repoName.owner,
+      repoName.repoName
+    );
+    const assets = await sourceRepo.getReleaseAssetsAsync(releaseTag);
+    // match downloaded release asset(s) to name regex(es)
+    const nameRegExesAndAssets: Map<RegExp, ReleaseAsset> = new Map<
+      RegExp,
+      ReleaseAsset
+    >();
+    for (const ar of releaseAsset) {
+      const nameRegEx = new RegExp(ar);
+      // assume each specified name regex corresponds to exactly one release asset
+      const asset = assets.find(x => nameRegEx.test(x.name))!;
+      nameRegExesAndAssets.set(new RegExp(ar), asset);
+    }
+    let nameRegEx = new RegExp('');
+    let asset = new ReleaseAsset('', '', '');
+    const sha256Hashes = new Map<string, string>();
 
     if (versionStr) {
       core.debug(
@@ -78,30 +104,32 @@ async function run(): Promise<void> {
       );
       version = new Version(versionStr);
     } else {
-      core.debug(
-        `computing new package version number from asset in repo '${releaseRepo}' @ '${releaseTag}'`
-      );
-      const repoName = Repository.splitRepoName(releaseRepo);
-      const sourceRepo = await Repository.createAsync(
-        gitHub,
-        repoName.owner,
-        repoName.repoName
-      );
-      const assets = await sourceRepo.getReleaseAssetsAsync(releaseTag);
-      const nameRegex = new RegExp(releaseAsset);
-      const asset = assets.find(x => nameRegex.test(x.name));
-      if (!asset) {
-        throw new Error(
-          `unable to find an asset matching '${releaseAsset}' in repo '${releaseRepo}'`
-        );
-      }
-      const matches = asset.name.match(nameRegex);
-      if (!matches || matches.length < 2) {
-        throw new Error(
-          `unable to match at least one capture group in asset name '${asset.name}' with regular expression '${nameRegex}'`
-        );
+      if (nameRegExesAndAssets.size === 0) {
+        let msg =
+          `unable to find an asset in '${releaseRepo}' matching specified regex(es).\n` +
+          `regex(es) checked:\n`;
+        for (const re of releaseAsset) {
+          msg += `${re}\n`;
+        }
+        throw new Error(msg);
       }
 
+      core.debug(
+        `computing new package version number from asset in repo '${releaseRepo}' @ '${releaseTag}'\n` +
+          `asset found using first releaseAsset regex`
+      );
+
+      // use first name regex/asset combo to find version and match with specified
+      // sha256 or url (if available)
+      nameRegEx = nameRegExesAndAssets.keys().next().value;
+      asset = nameRegExesAndAssets.get(nameRegEx)!;
+
+      const matches = asset.name.match(nameRegEx);
+      if (!matches || matches.length < 2) {
+        throw new Error(
+          `unable to match at least one capture group in asset name '${asset.name}' with regular expression '${nameRegEx}'`
+        );
+      }
       if (matches.groups?.version) {
         core.debug(
           `using 'version' named capture group for new package version: ${matches.groups?.version}`
@@ -113,22 +141,39 @@ async function run(): Promise<void> {
         );
         version = new Version(matches[1]);
       }
+    }
 
-      if (sha256) {
+    // single asset with precomputed hash
+    if (nameRegExesAndAssets.size === 1 && sha256) {
+      sha256Hashes.set(asset.name, sha256);
+      core.debug(
+        'skipping SHA256 computation from asset since already specified'
+      );
+      // single asset with URL
+    } else if (nameRegExesAndAssets.size === 1 && url) {
+      const fullUrl = version.format(url);
+      core.debug(`computing SHA256 hash of data from '${fullUrl}'...`);
+      sha256Hashes.set(asset.name, await computeSha256Async(fullUrl));
+      // multiple assets or single asset without hash or URL
+    } else if (nameRegExesAndAssets.size >= 1) {
+      core.debug(
+        `computing hash(es) for ${nameRegExesAndAssets.size} asset(s)`
+      );
+      for (const ra of nameRegExesAndAssets.values()) {
         core.debug(
-          'skipping SHA256 computation from asset as it has already been specified'
+          `computing SHA256 hash of data from asset at '${ra.downloadUrl}'...`
         );
-      } else if (url) {
-        core.debug(
-          'skipping SHA256 computation from asset as a URL has been specified'
-        );
-      } else {
-        core.debug(
-          `computing SHA256 hash of data from asset at '${asset.downloadUrl}'...`
-        );
-        sha256 = await computeSha256Async(asset.downloadUrl);
-        core.debug(`sha256=${sha256}`);
+        sha256Hashes.set(ra.name, await computeSha256Async(ra.downloadUrl));
       }
+    }
+
+    if (sha256Hashes.size === 0) {
+      throw new Error(
+        'cannot find/calculate SHA256 checksum. please try one of the following:\n' +
+          '1. Specify a release asset and SHA256\n' +
+          '2. Specify a release asset and URL\n' +
+          '3. Specify one or more release assets'
+      );
     }
 
     core.debug('getting package...');
@@ -148,24 +193,12 @@ async function run(): Promise<void> {
         throw new Error(`unknown type '${type}'`);
     }
 
-    if (url) {
-      const fullUrl = version.format(url);
-      core.debug('updating url...');
-      pkg.setField('url', fullUrl);
-
-      if (!sha256) {
-        core.debug(`computing SHA256 hash of data from '${fullUrl}'...`);
-        sha256 = await computeSha256Async(fullUrl);
-        core.debug(`sha256=${sha256}`);
-      }
-    } else if (!sha256) {
-      throw new Error(
-        'must specify the SHA256 checksum or a release asset if the URL is omitted'
-      );
-    }
-
     core.debug('updating sha256...');
-    pkg.setField('sha256', sha256);
+    let counter = 0;
+    for (const a of sha256Hashes.keys()) {
+      pkg.setField('sha256', sha256Hashes.get(a)!, counter);
+      ++counter;
+    }
 
     core.debug('updating version...');
     pkg.setField('version', version.toString());

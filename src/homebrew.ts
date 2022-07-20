@@ -30,7 +30,7 @@ export class Package {
   }
 
   private getFieldRegex(name: string): RegExp {
-    return new RegExp(`^(\\s*)${name} +(['"])([^'"]+)\\2`, 'm');
+    return new RegExp(`^(\\s*)${name} +(['"])([^'"]+)\\2`, 'gm');
   }
 
   getField(name: string): string {
@@ -38,11 +38,21 @@ export class Package {
     return match ? match[3] : '';
   }
 
-  setField(name: string, value: string): void {
+  setField(name: string, value: string, instance: number = 0): void {
+    let tracker = 0;
     this.content = this.content.replace(
       this.getFieldRegex(name),
-      (line, indent, quote) => {
-        return `${indent}${name} ${quote}${value}${quote}`;
+      (match, indent, quote) => {
+        // This allows us to match both occurrences of SHA256
+        // by explicitly specifying 0 when we want to match the
+        // first occurrence and 1 when we want to match the
+        // second.
+        if (tracker === instance) {
+          return `${indent}${name} ${quote}${value}${quote}`;
+        } else {
+          ++tracker;
+          return match;
+        }
       }
     );
   }
