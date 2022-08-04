@@ -82,18 +82,12 @@ async function run(): Promise<void> {
       repoName.owner,
       repoName.repoName
     );
-    const assets = await sourceRepo.getReleaseAssetsAsync(releaseTag);
-    // match downloaded release asset(s) to name regex(es)
+
+    let assets: ReleaseAsset[];
     const nameRegExesAndAssets: Map<RegExp, ReleaseAsset> = new Map<
       RegExp,
       ReleaseAsset
     >();
-    for (const ar of releaseAsset) {
-      const nameRegEx = new RegExp(ar);
-      // assume each specified name regex corresponds to exactly one release asset
-      const asset = assets.find(x => nameRegEx.test(x.name))!;
-      nameRegExesAndAssets.set(new RegExp(ar), asset);
-    }
     let nameRegEx = new RegExp('');
     let asset = new ReleaseAsset('', '', '');
     const sha256Hashes = new Map<string, string>();
@@ -104,6 +98,15 @@ async function run(): Promise<void> {
       );
       version = new Version(versionStr);
     } else {
+      assets = await sourceRepo.getReleaseAssetsAsync(releaseTag);
+      // match downloaded release asset(s) to name regex(es)
+      for (const ra of releaseAsset) {
+        nameRegEx = new RegExp(ra);
+        // assume each specified name regex corresponds to exactly one release asset
+        asset = assets.find(x => nameRegEx.test(x.name))!;
+        nameRegExesAndAssets.set(nameRegEx, asset);
+      }
+
       if (nameRegExesAndAssets.size === 0) {
         let msg =
           `unable to find an asset in '${releaseRepo}' matching specified regex(es).\n` +
@@ -118,11 +121,6 @@ async function run(): Promise<void> {
         `computing new package version number from asset in repo '${releaseRepo}' @ '${releaseTag}'\n` +
           `asset found using first releaseAsset regex`
       );
-
-      // use first name regex/asset combo to find version and match with specified
-      // sha256 or url (if available)
-      nameRegEx = nameRegExesAndAssets.keys().next().value;
-      asset = nameRegExesAndAssets.get(nameRegEx)!;
 
       const matches = asset.name.match(nameRegEx);
       if (!matches || matches.length < 2) {
@@ -144,13 +142,13 @@ async function run(): Promise<void> {
     }
 
     // single asset with precomputed hash
-    if (nameRegExesAndAssets.size === 1 && sha256) {
+    if (nameRegExesAndAssets.size <= 1 && sha256) {
       sha256Hashes.set(asset.name, sha256);
       core.debug(
         'skipping SHA256 computation from asset since already specified'
       );
       // single asset with URL
-    } else if (nameRegExesAndAssets.size === 1 && url) {
+    } else if (nameRegExesAndAssets.size <= 1 && url) {
       const fullUrl = version.format(url);
       core.debug(`computing SHA256 hash of data from '${fullUrl}'...`);
       sha256Hashes.set(asset.name, await computeSha256Async(fullUrl));
@@ -166,7 +164,6 @@ async function run(): Promise<void> {
         sha256Hashes.set(ra.name, await computeSha256Async(ra.downloadUrl));
       }
     }
-
     if (sha256Hashes.size === 0) {
       throw new Error(
         'cannot find/calculate SHA256 checksum. please try one of the following:\n' +

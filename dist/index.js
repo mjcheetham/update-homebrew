@@ -8796,15 +8796,8 @@ function run() {
             let version;
             const repoName = git_1.Repository.splitRepoName(releaseRepo);
             const sourceRepo = yield git_1.Repository.createAsync(gitHub, repoName.owner, repoName.repoName);
-            const assets = yield sourceRepo.getReleaseAssetsAsync(releaseTag);
-            // match downloaded release asset(s) to name regex(es)
+            let assets;
             const nameRegExesAndAssets = new Map();
-            for (const ar of releaseAsset) {
-                const nameRegEx = new RegExp(ar);
-                // assume each specified name regex corresponds to exactly one release asset
-                const asset = assets.find(x => nameRegEx.test(x.name));
-                nameRegExesAndAssets.set(new RegExp(ar), asset);
-            }
             let nameRegEx = new RegExp('');
             let asset = new git_1.ReleaseAsset('', '', '');
             const sha256Hashes = new Map();
@@ -8813,6 +8806,14 @@ function run() {
                 version = new version_1.Version(versionStr);
             }
             else {
+                assets = yield sourceRepo.getReleaseAssetsAsync(releaseTag);
+                // match downloaded release asset(s) to name regex(es)
+                for (const ra of releaseAsset) {
+                    nameRegEx = new RegExp(ra);
+                    // assume each specified name regex corresponds to exactly one release asset
+                    asset = assets.find(x => nameRegEx.test(x.name));
+                    nameRegExesAndAssets.set(nameRegEx, asset);
+                }
                 if (nameRegExesAndAssets.size === 0) {
                     let msg = `unable to find an asset in '${releaseRepo}' matching specified regex(es).\n` +
                         `regex(es) checked:\n`;
@@ -8823,10 +8824,6 @@ function run() {
                 }
                 core.debug(`computing new package version number from asset in repo '${releaseRepo}' @ '${releaseTag}'\n` +
                     `asset found using first releaseAsset regex`);
-                // use first name regex/asset combo to find version and match with specified
-                // sha256 or url (if available)
-                nameRegEx = nameRegExesAndAssets.keys().next().value;
-                asset = nameRegExesAndAssets.get(nameRegEx);
                 const matches = asset.name.match(nameRegEx);
                 if (!matches || matches.length < 2) {
                     throw new Error(`unable to match at least one capture group in asset name '${asset.name}' with regular expression '${nameRegEx}'`);
@@ -8841,12 +8838,12 @@ function run() {
                 }
             }
             // single asset with precomputed hash
-            if (nameRegExesAndAssets.size === 1 && sha256) {
+            if (nameRegExesAndAssets.size <= 1 && sha256) {
                 sha256Hashes.set(asset.name, sha256);
                 core.debug('skipping SHA256 computation from asset since already specified');
                 // single asset with URL
             }
-            else if (nameRegExesAndAssets.size === 1 && url) {
+            else if (nameRegExesAndAssets.size <= 1 && url) {
                 const fullUrl = version.format(url);
                 core.debug(`computing SHA256 hash of data from '${fullUrl}'...`);
                 sha256Hashes.set(asset.name, yield hash_1.computeSha256Async(fullUrl));
