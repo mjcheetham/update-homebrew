@@ -1,4 +1,5 @@
-import { GitHub } from '@actions/github';
+import { GitHub } from '@actions/github/lib/utils';
+export type Api = InstanceType<typeof GitHub>;
 
 export class File {
   readonly path: string;
@@ -52,7 +53,7 @@ export class ReleaseAsset {
 }
 
 export class Repository {
-  readonly api: GitHub;
+  readonly api: Api;
   readonly owner: string;
   readonly name: string;
   readonly defaultBranch: Branch;
@@ -62,7 +63,7 @@ export class Repository {
   readonly req: any;
 
   private constructor(
-    api: GitHub,
+    api: Api,
     owner: string,
     name: string,
     defaultBranch: Branch,
@@ -77,13 +78,13 @@ export class Repository {
   }
 
   static async createAsync(
-    api: GitHub,
+    api: Api,
     owner: string,
     name: string
   ): Promise<Repository> {
     const req = { owner, repo: name };
-    const { data: repoData } = await api.repos.get(req);
-    const { data: branchData } = await api.repos.getBranch({
+    const { data: repoData } = await api.rest.repos.get(req);
+    const { data: branchData } = await api.rest.repos.getBranch({
       ...req,
       branch: repoData.default_branch
     });
@@ -99,7 +100,7 @@ export class Repository {
       owner,
       name,
       defaultBranch,
-      repoData.permissions.push
+      repoData.permissions ? repoData.permissions.push : false
     );
   }
 
@@ -118,7 +119,7 @@ export class Repository {
     filePath: string,
     branch: string | undefined
   ): Promise<File> {
-    const { data, status } = await this.api.repos.getContents({
+    const { data, status } = await this.api.rest.repos.getContent({
       ...this.req,
       path: filePath,
       ref: branch || this.defaultBranch.name
@@ -145,7 +146,7 @@ export class Repository {
     message: string,
     existingBlob?: string
   ): Promise<Commit> {
-    const { status, data } = await this.api.repos.createOrUpdateFile({
+    const { status, data } = await this.api.rest.repos.createOrUpdateFileContents({
       ...this.req,
       content: Buffer.from(content).toString('base64'),
       branch,
@@ -159,11 +160,11 @@ export class Repository {
       `failed to create commit on branch '${branch}' in '${this.owner}/${this.name}'`
     );
 
-    return new Commit(data.commit.sha, data.commit.html_url);
+    return new Commit(data.commit.sha!, data.commit.html_url!);
   }
 
   async getBranchAsync(name: string): Promise<Branch> {
-    const { status: branchStatus, data } = await this.api.repos.getBranch({
+    const { status: branchStatus, data } = await this.api.rest.repos.getBranch({
       ...this.req,
       branch: name
     });
@@ -177,7 +178,7 @@ export class Repository {
   }
 
   async createBranchAsync(name: string, sha: string): Promise<Branch> {
-    const { status: refStatus } = await this.api.git.createRef({
+    const { status: refStatus } = await this.api.rest.git.createRef({
       ...this.req,
       sha,
       ref: `refs/heads/${name}`
@@ -192,7 +193,7 @@ export class Repository {
   }
 
   async createForkAsync(owner?: string): Promise<Repository> {
-    const { status, data } = await this.api.repos.createFork({
+    const { status, data } = await this.api.rest.repos.createFork({
       ...this.req,
       organization: owner
     });
@@ -216,7 +217,7 @@ export class Repository {
       ? `${sourceOwner}:${sourceBranch}`
       : sourceBranch;
 
-    const { status, data } = await this.api.pulls.create({
+    const { status, data } = await this.api.rest.pulls.create({
       ...this.req,
       head: headRef,
       base: targetBranch,
@@ -235,7 +236,7 @@ export class Repository {
   async getReleaseAssetsAsync(tag: string): Promise<ReleaseAsset[]> {
     const tagName = tag.replace(/^(refs\/tags\/)/, '');
 
-    const { status, data } = await this.api.repos.getReleaseByTag({
+    const { status, data } = await this.api.rest.repos.getReleaseByTag({
       ...this.req,
       tag: tagName
     });

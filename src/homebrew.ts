@@ -1,5 +1,4 @@
 import * as core from '@actions/core';
-import { GitHub } from '@actions/github';
 import * as Git from './git';
 
 export class Package {
@@ -75,7 +74,7 @@ export class Tap {
   }
 
   static async createAsync(
-    api: GitHub,
+    api: Git.Api,
     name: string,
     branch?: string
   ): Promise<Tap> {
