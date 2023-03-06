@@ -228,7 +228,11 @@ async function run(): Promise<void> {
       core.warning('unknown type of package update');
     }
   } catch (error) {
-    core.setFailed(error.message);
+    if (error instanceof Error) {
+      core.setFailed(error);
+    } else {
+      core.setFailed(`Unknown error occurred.`)
+    }
   }
 }
 
