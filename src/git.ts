@@ -104,9 +104,10 @@ export class Repository {
     );
   }
 
-  static splitRepoName(
-    ownerAndName: string
-  ): { owner: string; repoName: string } {
+  static splitRepoName(ownerAndName: string): {
+    owner: string;
+    repoName: string;
+  } {
     const nameParts = ownerAndName.split('/');
     if (nameParts.length !== 2) {
       throw new Error(`invalid repo name '${ownerAndName}'`);
@@ -127,8 +128,9 @@ export class Repository {
 
     assertOk(
       status,
-      `failed to download '${filePath}' @ '${branch ||
-        this.defaultBranch.name}' from '${this.owner}/${this.name}'`
+      `failed to download '${filePath}' @ '${
+        branch || this.defaultBranch.name
+      }' from '${this.owner}/${this.name}'`
     );
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -146,14 +148,15 @@ export class Repository {
     message: string,
     existingBlob?: string
   ): Promise<Commit> {
-    const { status, data } = await this.api.rest.repos.createOrUpdateFileContents({
-      ...this.req,
-      content: Buffer.from(content).toString('base64'),
-      branch,
-      path: filePath,
-      message,
-      sha: existingBlob
-    });
+    const { status, data } =
+      await this.api.rest.repos.createOrUpdateFileContents({
+        ...this.req,
+        content: Buffer.from(content).toString('base64'),
+        branch,
+        path: filePath,
+        message,
+        sha: existingBlob
+      });
 
     assertOk(
       status,

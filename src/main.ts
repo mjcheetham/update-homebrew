@@ -231,7 +231,7 @@ async function run(): Promise<void> {
     if (error instanceof Error) {
       core.setFailed(error);
     } else {
-      core.setFailed(`Unknown error occurred.`)
+      core.setFailed(`Unknown error occurred.`);
     }
   }
 }

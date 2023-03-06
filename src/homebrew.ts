@@ -7,7 +7,6 @@ export class Package {
   readonly gitBlob: string | undefined;
   content: string;
 
-  /* eslint-disable no-dupe-class-members */
   constructor(gitFile: Git.File);
   constructor(filePath: string, content: string);
   constructor(pathOrGitFile: string | Git.File, content?: string) {
@@ -22,7 +21,6 @@ export class Package {
 
     this.originalContent = this.content;
   }
-  /* eslint-enable no-dupe-class-members */
 
   isDirty(): boolean {
     return this.originalContent !== this.content;
@@ -37,7 +35,7 @@ export class Package {
     return match ? match[3] : '';
   }
 
-  setField(name: string, value: string, instance: number = 0): void {
+  setField(name: string, value: string, instance = 0): void {
     let tracker = 0;
     this.content = this.content.replace(
       this.getFieldRegex(name),
