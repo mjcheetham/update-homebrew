@@ -2,7 +2,7 @@ import * as core from '@actions/core';
 import { Tap, Package } from './homebrew';
 import { Repository, Commit, PullRequest, ReleaseAsset } from './git';
 import { Version } from './version';
-import { GitHub } from '@actions/github';
+import { getOctokit } from '@actions/github';
 import { computeSha256Async } from './hash';
 
 function formatMessage(
@@ -22,7 +22,7 @@ function formatMessage(
 async function run(): Promise<void> {
   try {
     const token = core.getInput('token');
-    const gitHub = new GitHub(token);
+    const gitHub = getOctokit(token);
 
     const tapStr = core.getInput('tap', { required: true });
     const tapBranch = core.getInput('branch');
@@ -228,7 +228,11 @@ async function run(): Promise<void> {
       core.warning('unknown type of package update');
     }
   } catch (error) {
-    core.setFailed(error.message);
+    if (error instanceof Error) {
+      core.setFailed(error);
+    } else {
+      core.setFailed(`Unknown error occurred.`);
+    }
   }
 }
 
