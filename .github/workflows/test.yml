@@ -1,5 +1,6 @@
 name: "build-test"
 on: # rebuild any PRs and main branch changes
+  workflow_dispatch:
   pull_request:
   push:
     branches:
@@ -23,7 +24,7 @@ jobs:
     - name: Update test Formula
       uses: ./
       with:
-        token: ${{secrets.COMMIT_TOKEN}}
+        token: ${{ secrets.COMMIT_TOKEN }}
         tap: mjcheetham/tap
         branch: test
         name: test-formula
@@ -43,7 +44,7 @@ jobs:
     - name: Update test Cask
       uses: ./
       with:
-        token: ${{secrets.COMMIT_TOKEN}}
+        token: ${{ secrets.COMMIT_TOKEN }}
         tap: mjcheetham/tap
         branch: test
         type: cask
