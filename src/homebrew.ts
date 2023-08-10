@@ -103,7 +103,11 @@ export class Tap {
   }
 
   async getCaskAsync(name: string): Promise<Package> {
-    const filePath = `Casks/${name}.rb`;
+    const prefix =
+      this.repo.name === 'homebrew-cask'
+        ? `Casks/${name[0].toLowerCase()}`
+        : 'Casks';
+    const filePath = `${prefix}/${name}.rb`;
     return this.getPackageAsync(filePath);
   }
 
