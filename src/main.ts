@@ -221,9 +221,9 @@ async function run(): Promise<void> {
     };
     const result = await tap.updatePackageAsync(updateOptions);
     if (result instanceof Commit) {
-      core.info(`Created commit '${result.sha}': ${result.url}`);
+      core.notice(`Created commit '${result.sha}': ${result.url}`);
     } else if (result instanceof PullRequest) {
-      core.info(`Created pull request '${result.id}': ${result.url}`);
+      core.notice(`Created pull request '${result.id}': ${result.url}`);
     } else {
       core.warning('unknown type of package update');
     }
